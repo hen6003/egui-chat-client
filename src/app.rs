@@ -50,13 +50,21 @@ pub struct Client {
 impl Client {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>, server: Option<&str>) -> Self {
-        let connections = if let Some(server) = server {
-            vec![ConnectionData::new(server, "nobody")]
-        } else if let Some(storage) = cc.storage {
+        let mut start_tab = 0;
+        let mut connections = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
-            vec![ConnectionData::default()]
+            Vec::new()
         };
+
+        if let Some(server) = server {
+            connections.push(ConnectionData::new(server, "nobody"));
+            start_tab = connections.len() - 1;
+        }
+
+        if connections.len() == 0 {
+            connections.push(ConnectionData::default());
+        }
 
         // Start network thread
         let mut tabs = Vec::new();
@@ -70,6 +78,7 @@ impl Client {
 
         Self {
             tabs,
+            current_tab: start_tab,
 
             ..Default::default()
         }
@@ -94,7 +103,36 @@ impl eframe::App for Client {
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
 
-            if ui.button("Add server").clicked() {
+            let mut to_remove = Vec::new();
+            for (i, tab) in self.tabs.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.button(tab.connection.server()).clicked() {
+                        self.current_tab = i;
+                    }
+
+                    if ui
+                        .add_enabled(
+                            self.tabs.len() != 1,
+                            egui::Button::new(egui::RichText::new("❌").color(egui::Color32::RED)),
+                        )
+                        .clicked()
+                    {
+                        to_remove.push(i);
+                    }
+                });
+            }
+            for i in to_remove {
+                self.tabs.remove(i);
+            }
+
+            if self.current_tab >= self.tabs.len() {
+                self.current_tab = self.tabs.len() - 1;
+            }
+
+            if ui
+                .button(egui::RichText::new("+").color(egui::Color32::GREEN))
+                .clicked()
+            {
                 self.show_server_edit = true;
             }
         });
@@ -210,8 +248,7 @@ impl eframe::App for Client {
 
         if self.show_server_edit {
             egui::Window::new("Server details")
-                .resizable(false)
-                .min_width(200.0)
+                .fixed_size((200.0, 60.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Server address");
@@ -233,13 +270,13 @@ impl eframe::App for Client {
 
                     ui.with_layout(egui::Layout::right_to_left(), |ui| {
                         if ui.button("Add").clicked() {
-                            self.tabs[0] = Tab::new(
+                            self.tabs.push(Tab::new(
                                 ctx.clone(),
                                 ConnectionData::new(
                                     &self.server_edit_address,
                                     &self.server_edit_name,
                                 ),
-                            );
+                            ));
 
                             self.server_edit_address.clear();
                             self.server_edit_name.clear();

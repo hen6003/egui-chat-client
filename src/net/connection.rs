@@ -1,4 +1,4 @@
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
 #[serde(default)]
 pub struct ConnectionData {
     server: String,

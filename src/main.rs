@@ -13,8 +13,8 @@ async fn main() {
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "eframe template",
+        "Chatting client",
         native_options,
-        Box::new(|cc| Box::new(Client::new(cc, Some("ssh.hen6003.xyz")))),
+        Box::new(|cc| Box::new(Client::new(cc, None))),
     );
 }
