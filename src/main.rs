@@ -6,8 +6,6 @@ mod net;
 
 use app::Client;
 
-// When compiling natively:
-#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main() {
     // Log to stdout (if you run with `RUST_LOG=debug`).
@@ -17,6 +15,6 @@ async fn main() {
     eframe::run_native(
         "eframe template",
         native_options,
-        Box::new(|cc| Box::new(Client::new(cc))),
+        Box::new(|cc| Box::new(Client::new(cc, Some("ssh.hen6003.xyz")))),
     );
 }

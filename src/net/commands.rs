@@ -3,6 +3,9 @@ use std::str::FromStr;
 #[derive(Debug)]
 pub enum ChatCommands {
     Message { sender: String, message: String },
+    UserConnected { name: String },
+    UserDisconnected { name: String },
+    UserRenamed { oldname: String, newname: String },
 }
 
 impl FromStr for ChatCommands {
@@ -17,6 +20,22 @@ impl FromStr for ChatCommands {
                     Ok(Self::Message {
                         sender: a.to_string(),
                         message: b.to_string(),
+                    })
+                }
+
+                "c" | "connect" => Ok(Self::UserConnected {
+                    name: b.to_string(),
+                }),
+                "d" | "disconnect" => Ok(Self::UserDisconnected {
+                    name: b.to_string(),
+                }),
+
+                "r" | "rename" => {
+                    let (a, b) = b.split_once(' ').ok_or(())?;
+
+                    Ok(Self::UserRenamed {
+                        oldname: a.to_string(),
+                        newname: b.to_string(),
                     })
                 }
 
