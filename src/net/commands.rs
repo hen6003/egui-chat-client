@@ -46,3 +46,10 @@ impl FromStr for ChatCommands {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum ClientCommands {
+    ChatCommand(ChatCommands),
+    Connect,
+    Disconnect,
+}

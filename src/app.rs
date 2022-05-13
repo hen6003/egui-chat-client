@@ -1,48 +1,75 @@
-use crate::net::{client, commands::ChatCommands, connection::ConnectionData};
+use crate::net::{client, commands::*, connection::ConnectionData};
 
 use egui::vec2;
-use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 struct Tab {
-    messages: Arc<Mutex<Vec<ChatCommands>>>,
-    network_send: mpsc::Sender<String>,
+    messages: Vec<ChatCommands>,
+    send: mpsc::Sender<String>,
+    recv: mpsc::Receiver<ClientCommands>,
     message: String,
+
+    connected: bool,
 
     connection: ConnectionData,
 }
 
 impl Tab {
     fn new(egui_ctx: egui::Context, connection: ConnectionData) -> Self {
-        let messages = Arc::new(Mutex::new(Vec::new()));
-        let messages_network = Arc::clone(&messages);
-        let (network_send, network_recv) = mpsc::channel::<String>(100);
+        let (tab_send, client_recv) = mpsc::channel::<String>(5);
+        let (client_send, tab_recv) = mpsc::channel::<ClientCommands>(100);
 
-        {
-            let connection = connection.clone();
+        let thread_connection = connection.clone();
 
-            tokio::spawn(async move {
-                client::network(messages_network, network_recv, egui_ctx, connection).await
-            });
-        }
+        tokio::spawn(async move {
+            client::network(client_send, client_recv, egui_ctx, thread_connection).await
+        });
 
         Self {
-            messages,
-            network_send,
+            messages: Vec::new(),
+            send: tab_send,
+            recv: tab_recv,
             message: String::new(),
+            connected: false,
             connection,
         }
     }
 
     fn change_name(&mut self, name: &str) {
-        let sender = self.network_send.clone();
         let message = format!("/n {}", name);
+
+        self.send(message);
+
+        self.connection.set_name(name);
+    }
+
+    fn send_message(&mut self) {
+        let message = self.message.clone();
+        self.send(message);
+        self.message.clear();
+    }
+
+    fn send(&mut self, message: String) {
+        let sender = self.send.clone();
         thread::spawn(move || {
             sender.blocking_send(message).unwrap();
         });
+    }
 
-        self.connection.set_name(name);
+    fn sync_messages(&mut self) {
+        loop {
+            match self.recv.try_recv() {
+                Ok(ClientCommands::ChatCommand(c)) => self.messages.push(c),
+                Ok(ClientCommands::Connect) => self.connected = true,
+
+                Ok(ClientCommands::Disconnect) | Err(TryRecvError::Disconnected) => {
+                    self.connected = false
+                }
+
+                Err(TryRecvError::Empty) => break,
+            }
+        }
     }
 }
 
@@ -188,10 +215,10 @@ impl eframe::App for Client {
                             egui::Grid::new("message_grid")
                                 .num_columns(2)
                                 .show(ui, |ui| {
-                                    let lock = self.tabs[self.current_tab].messages.lock().unwrap();
+                                    self.tabs[self.current_tab].sync_messages();
 
-                                    for row in 0..lock.len() {
-                                        let c = &lock[row];
+                                    for row in 0..self.tabs[self.current_tab].messages.len() {
+                                        let c = &self.tabs[self.current_tab].messages[row];
 
                                         for col in 0..2 {
                                             if col == 0 {
@@ -273,16 +300,8 @@ impl eframe::App for Client {
             );
 
             if response.lost_focus() && ui.input().key_pressed(egui::Key::Enter) {
-                let message = self.tabs[self.current_tab].message.clone();
-
-                self.tabs[self.current_tab].message.clear();
+                self.tabs[self.current_tab].send_message();
                 response.request_focus();
-
-                // Start new thread to send message to avoid blocking ui draw
-                let sender = self.tabs[self.current_tab].network_send.clone();
-                thread::spawn(move || {
-                    sender.blocking_send(message).unwrap();
-                });
             }
         });
 

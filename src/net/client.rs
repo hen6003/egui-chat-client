@@ -1,6 +1,5 @@
 use crate::net::{commands::*, connection::ConnectionData};
 
-use std::sync::{Arc, Mutex};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
@@ -8,7 +7,7 @@ use tokio::{
 };
 
 pub async fn network(
-    commands: Arc<Mutex<Vec<ChatCommands>>>,
+    send: mpsc::Sender<ClientCommands>,
     mut recv: mpsc::Receiver<String>,
     egui_ctx: egui::Context,
     connection: ConnectionData,
@@ -47,10 +46,11 @@ pub async fn network(
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next_line().await.unwrap() {
-        let mut lock = commands.lock().unwrap();
         let command = str::parse::<ChatCommands>(&line).unwrap();
-        lock.push(command);
-        drop(lock);
+
+        send.send(ClientCommands::ChatCommand(command))
+            .await
+            .unwrap();
 
         egui_ctx.request_repaint();
     }
