@@ -47,9 +47,16 @@ impl FromStr for ChatCommands {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ConnectState {
+    Loading,
+    Connected,
+    Disconnect,
+    Failed,
+}
+
 #[derive(Debug)]
 pub enum ClientCommands {
     ChatCommand(ChatCommands),
-    Connect,
-    Disconnect,
+    ConnectState(ConnectState),
 }

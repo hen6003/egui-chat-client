@@ -10,7 +10,7 @@ struct Tab {
     recv: mpsc::Receiver<ClientCommands>,
     message: String,
 
-    connected: bool,
+    connect_state: ConnectState,
 
     connection: ConnectionData,
 }
@@ -31,7 +31,7 @@ impl Tab {
             send: tab_send,
             recv: tab_recv,
             message: String::new(),
-            connected: false,
+            connect_state: ConnectState::Loading,
             connection,
         }
     }
@@ -58,16 +58,25 @@ impl Tab {
     }
 
     fn sync_messages(&mut self) {
-        loop {
-            match self.recv.try_recv() {
-                Ok(ClientCommands::ChatCommand(c)) => self.messages.push(c),
-                Ok(ClientCommands::Connect) => self.connected = true,
+        if self.connect_state != ConnectState::Failed
+            || self.connect_state != ConnectState::Disconnect
+        {
+            loop {
+                match self.recv.try_recv() {
+                    Ok(ClientCommands::ChatCommand(c)) => self.messages.push(c),
+                    Ok(ClientCommands::ConnectState(s)) => self.connect_state = s,
 
-                Ok(ClientCommands::Disconnect) | Err(TryRecvError::Disconnected) => {
-                    self.connected = false
+                    Err(TryRecvError::Disconnected) => {
+                        self.connect_state = match self.connect_state {
+                            ConnectState::Connected => ConnectState::Disconnect,
+                            _ => ConnectState::Failed,
+                        };
+
+                        break;
+                    }
+
+                    Err(TryRecvError::Empty) => break,
                 }
-
-                Err(TryRecvError::Empty) => break,
             }
         }
     }
@@ -107,7 +116,7 @@ impl Client {
             start_tab = connections.len() - 1;
         }
 
-        if connections.len() == 0 {
+        if connections.is_empty() {
             connections.push(ConnectionData::default());
         }
 
@@ -145,6 +154,11 @@ impl eframe::App for Client {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Update data
+        for tab in self.tabs.iter_mut() {
+            tab.sync_messages();
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("Server", |ui| {
@@ -173,7 +187,18 @@ impl eframe::App for Client {
             let mut to_remove = Vec::new();
             for (i, tab) in self.tabs.iter().enumerate() {
                 ui.horizontal(|ui| {
-                    if ui.button(tab.connection.server()).clicked() {
+                    let text = match tab.connect_state {
+                        ConnectState::Loading => {
+                            ui.spinner();
+                            egui::RichText::new(tab.connection.server())
+                        }
+                        ConnectState::Disconnect | ConnectState::Failed => {
+                            egui::RichText::new(tab.connection.server()).color(egui::Color32::RED)
+                        }
+                        _ => egui::RichText::new(tab.connection.server()),
+                    };
+
+                    if ui.button(text).clicked() {
                         self.current_tab = i;
                     }
 
@@ -215,8 +240,6 @@ impl eframe::App for Client {
                             egui::Grid::new("message_grid")
                                 .num_columns(2)
                                 .show(ui, |ui| {
-                                    self.tabs[self.current_tab].sync_messages();
-
                                     for row in 0..self.tabs[self.current_tab].messages.len() {
                                         let c = &self.tabs[self.current_tab].messages[row];
 

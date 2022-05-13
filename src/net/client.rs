@@ -19,10 +19,25 @@ pub async fn network(
         connection.server().to_owned() + ":6078"
     };
 
-    let stream = TcpStream::connect(server_name).await.unwrap();
+    let stream = match TcpStream::connect(server_name).await {
+        Ok(s) => s,
+        Err(_) => {
+            send.send(ClientCommands::ConnectState(ConnectState::Failed))
+                .await
+                .unwrap();
+
+            egui_ctx.request_repaint();
+            return;
+        }
+    };
+
     let (reader, mut writer) = stream.into_split();
     let reader = BufReader::new(reader);
     let name = connection.name().clone();
+
+    send.send(ClientCommands::ConnectState(ConnectState::Connected))
+        .await
+        .unwrap();
 
     // Start thread handling user input
     tokio::spawn(async move {
@@ -54,4 +69,8 @@ pub async fn network(
 
         egui_ctx.request_repaint();
     }
+
+    send.send(ClientCommands::ConnectState(ConnectState::Disconnect))
+        .await
+        .unwrap();
 }
