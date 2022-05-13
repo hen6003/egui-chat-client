@@ -161,6 +161,8 @@ impl eframe::App for Client {
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
+                egui::warn_if_debug_build(ui);
+
                 ui.menu_button("Server", |ui| {
                     if ui.button("Edit").clicked() {
                         self.server_edit = ServerEdit::Change(self.current_tab);
@@ -182,8 +184,6 @@ impl eframe::App for Client {
         });
 
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
-            egui::warn_if_debug_build(ui);
-
             let mut to_remove = Vec::new();
             for (i, tab) in self.tabs.iter().enumerate() {
                 ui.horizontal(|ui| {
