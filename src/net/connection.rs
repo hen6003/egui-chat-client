@@ -29,4 +29,8 @@ impl ConnectionData {
     pub fn name(&self) -> &String {
         &self.name
     }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.name = name.to_string()
+    }
 }

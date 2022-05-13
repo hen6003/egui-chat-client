@@ -34,6 +34,24 @@ impl Tab {
             connection,
         }
     }
+
+    fn change_name(&mut self, name: &str) {
+        let sender = self.network_send.clone();
+        let message = format!("/n {}", name);
+        thread::spawn(move || {
+            sender.blocking_send(message).unwrap();
+        });
+
+        self.connection.set_name(name);
+    }
+}
+
+#[derive(PartialEq, Default)]
+enum ServerEdit {
+    #[default]
+    None,
+    New,
+    Change(usize),
 }
 
 #[derive(Default)]
@@ -42,7 +60,7 @@ pub struct Client {
 
     current_tab: usize,
 
-    show_server_edit: bool,
+    server_edit: ServerEdit,
     server_edit_name: String,
     server_edit_address: String,
 }
@@ -100,6 +118,28 @@ impl eframe::App for Client {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("Server", |ui| {
+                    if ui.button("Edit").clicked() {
+                        self.server_edit = ServerEdit::Change(self.current_tab);
+
+                        self.server_edit_address =
+                            self.tabs[self.current_tab].connection.server().to_string();
+                        self.server_edit_name =
+                            self.tabs[self.current_tab].connection.name().to_string();
+                    }
+
+                    if ui
+                        .add_enabled(self.tabs.len() != 1, egui::Button::new("Close"))
+                        .clicked()
+                    {
+                        self.tabs.remove(self.current_tab);
+                    }
+                });
+            });
+        });
+
         egui::SidePanel::left("left_panel").show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
 
@@ -133,7 +173,7 @@ impl eframe::App for Client {
                 .button(egui::RichText::new("+").color(egui::Color32::GREEN))
                 .clicked()
             {
-                self.show_server_edit = true;
+                self.server_edit = ServerEdit::New;
             }
         });
 
@@ -246,7 +286,7 @@ impl eframe::App for Client {
             }
         });
 
-        if self.show_server_edit {
+        if self.server_edit != ServerEdit::None {
             egui::Window::new("Server details")
                 .fixed_size((200.0, 60.0))
                 .show(ctx, |ui| {
@@ -270,21 +310,42 @@ impl eframe::App for Client {
 
                     ui.with_layout(egui::Layout::right_to_left(), |ui| {
                         if ui.button("Add").clicked() {
-                            self.tabs.push(Tab::new(
-                                ctx.clone(),
-                                ConnectionData::new(
-                                    &self.server_edit_address,
-                                    &self.server_edit_name,
-                                ),
-                            ));
+                            match self.server_edit {
+                                ServerEdit::New => self.tabs.push(Tab::new(
+                                    ctx.clone(),
+                                    ConnectionData::new(
+                                        &self.server_edit_address,
+                                        &self.server_edit_name,
+                                    ),
+                                )),
+
+                                ServerEdit::Change(i) => {
+                                    if self.server_edit_address != *self.tabs[i].connection.server()
+                                    {
+                                        self.tabs[i] = Tab::new(
+                                            ctx.clone(),
+                                            ConnectionData::new(
+                                                &self.server_edit_address,
+                                                &self.server_edit_name,
+                                            ),
+                                        );
+                                    } else {
+                                        self.tabs[i].change_name(&self.server_edit_name);
+                                    }
+                                }
+
+                                _ => unreachable!(),
+                            }
 
                             self.server_edit_address.clear();
                             self.server_edit_name.clear();
-                            self.show_server_edit = false;
+                            self.server_edit = ServerEdit::None;
                         }
 
                         if ui.button("Cancel").clicked() {
-                            self.show_server_edit = false;
+                            self.server_edit_address.clear();
+                            self.server_edit_name.clear();
+                            self.server_edit = ServerEdit::None;
                         }
                     });
                 });
