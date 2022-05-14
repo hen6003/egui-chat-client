@@ -36,6 +36,20 @@ impl Tab {
         }
     }
 
+    fn reconnect(&mut self, egui_ctx: egui::Context) {
+        let (tab_send, client_recv) = mpsc::channel::<String>(5);
+        let (client_send, tab_recv) = mpsc::channel::<ClientCommands>(100);
+
+        let thread_connection = self.connection.clone();
+
+        tokio::spawn(async move {
+            client::network(client_send, client_recv, egui_ctx, thread_connection).await
+        });
+
+        self.send = tab_send;
+        self.recv = tab_recv;
+    }
+
     fn change_name(&mut self, name: &str) {
         let message = format!("/n {}", name);
 
@@ -171,6 +185,10 @@ impl eframe::App for Client {
                             self.tabs[self.current_tab].connection.server().to_string();
                         self.server_edit_name =
                             self.tabs[self.current_tab].connection.name().to_string();
+                    }
+
+                    if ui.button("Reconnect").clicked() {
+                        self.tabs[self.current_tab].reconnect(ctx.clone());
                     }
 
                     if ui

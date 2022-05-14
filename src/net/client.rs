@@ -73,4 +73,5 @@ pub async fn network(
     send.send(ClientCommands::ConnectState(ConnectState::Disconnect))
         .await
         .unwrap();
+    egui_ctx.request_repaint();
 }
